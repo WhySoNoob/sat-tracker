@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bảng Theo Dõi Tiến Độ SAT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Load Confetti library for visual effects -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.4.0/dist/confetti.browser.min.js"></script>
+    <!-- Load Tone.js for background music synthesis -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            transition: background-color 0.3s ease; /* Smooth transition for background changes */
+        }
+        /* Styles for completed tasks */
+        .task-item:has(input:checked) label {
+            text-decoration: line-through;
+            color: #9ca3af;
+        }
+        .task-item:has(input:checked) {
+            background-color: #f3f4f6;
+        }
+        /* Custom styles for buttons */
+        .btn {
+            @apply px-4 py-2 rounded-lg font-semibold transition-all duration-300;
+        }
+        .btn-primary {
+            @apply bg-blue-600 text-white hover:bg-blue-700 shadow-md;
+        }
+        .btn-secondary {
+            @apply bg-gray-300 text-gray-800 hover:bg-gray-400 shadow-md;
+        }
+        .btn-green {
+            @apply bg-green-500 text-white hover:bg-green-600 shadow-md;
+        }
+        .btn-red {
+            @apply bg-red-500 text-white hover:bg-red-600 shadow-md;
+        }
+        /* Circular button style */
+        .btn-circle {
+            @apply w-16 h-16 rounded-full flex items-center justify-center text-xl shadow-lg; /* Large, round */
+        }
+        /* Icon transition */
+        .icon-transition {
+            transition: transform 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-blue-600">Kế hoạch Chinh phục SAT English</h1>
+            <p class="text-gray-600 mt-2">Cùng hoàn thành mục tiêu trước ngày 1 tháng 7 nhé!</p>
+            <div id="user-info" class="mt-4 text-sm text-gray-500">
+                <!-- User ID will be inserted here -->
+            </div>
+        </header>
+
+        <!-- Progress Section -->
+        <div class="mb-8 p-4 bg-white rounded-lg shadow-xl border border-gray-200">
+            <h2 class="text-xl font-semibold mb-2 text-gray-700">Tổng Tiến Độ</h2>
+            <div class="flex justify-between items-center mb-2 font-medium text-gray-600">
+                <span id="progress-text">Hoàn thành: 0/890 câu</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-4">
+                <div id="progress-bar" class="bg-green-500 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Pomodoro Timer Section -->
+        <div class="mb-8 p-6 bg-white rounded-lg shadow-xl border border-gray-200 text-center">
+            <h2 class="text-2xl font-bold mb-4 text-blue-700">Bộ đếm thời gian Pomodoro</h2>
+            <p id="pomodoro-status" class="text-gray-600 mb-4 text-lg font-medium">Bắt đầu phiên làm việc!</p>
+            <div class="text-6xl font-extrabold text-blue-800 mb-6">
+                <span id="minutes">25</span>:<span id="seconds">00</span>
+            </div>
+            <div class="flex justify-center space-x-6">
+                <!-- New Play/Pause Button - Changed default background to a dark shade -->
+                <button id="play-pause-btn" class="btn btn-circle bg-gray-800 text-white">
+                    <i id="play-pause-icon" class="fas fa-play icon-transition"></i>
+                </button>
+                <!-- New Reset Button -->
+                <button id="reset-btn" class="btn btn-circle bg-red-500 text-white">
+                    <i class="fas fa-redo icon-transition"></i>
+                </button>
+            </div>
+            <!-- Music Toggle Button -->
+            <div class="mt-6">
+                <button id="music-toggle-btn" class="btn btn-secondary flex items-center mx-auto">
+                    <i class="fas fa-volume-mute mr-2"></i> Nhạc nền
+                </button>
+            </div>
+        </div>
+        
+        <!-- Loading Spinner -->
+        <div id="loading" class="text-center py-10">
+            <i class="fas fa-spinner fa-spin fa-3x text-blue-500"></i>
+            <p class="mt-2 text-gray-600">Đang tải dữ liệu của bạn...</p>
+        </div>
+
+        <!-- Task List -->
+        <div id="task-container" class="space-y-6 hidden">
+            <!-- Day cards will be injected here by JavaScript -->
+        </div>
+
+    </div>
+
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- CONFIGURATION ---
+        const appId = 'sat-tracker-local'; // Default app ID for local development
+        const firebaseConfig = {
+            apiKey: "AIzaSyA7hmXe5QkF2wV1byQPs4Z2XNSbMcWdAds",
+            authDomain: "sat123-7e13e.firebaseapp.com",
+            projectId: "sat123-7e13e",
+            storageBucket: "sat123-7e13e.firebasestorage.app",
+            messagingSenderId: "335350659221",
+            appId: "1:335350659221:web:86959bc2b72c4127aec39c",
+            measurementId: "G-79P7YNL4S9"
+        };
+        const initialAuthToken = null; // No initial auth token for local runs
+
+        const TOTAL_QUESTIONS = 890; // Total number of questions for SAT English
+
+        // Daily plan data for the SAT English tracker
+        const dailyPlan = [
+            { day: "Ngày 1: Thứ Ba, 24/06", tasks: [
+                { id: "d1t1", label: "Command of Evidence", questions: 35 },
+                { id: "d1t2", label: "Transitions", questions: 35 },
+                { id: "d1t3", label: "Boundaries", questions: 30 },
+                { id: "d1t4", label: "Words in Context", questions: 27 }
+            ]},
+            { day: "Ngày 2: Thứ Tư, 25/06", tasks: [
+                { id: "d2t1", label: "Rhetorical Synthesis", questions: 35 },
+                { id: "d2t2", label: "Text Structure and Purpose", questions: 30 },
+                { id: "d2t3", label: "Form, Structure, and Sense", questions: 35 },
+                { id: "d2t4", label: "Inferences", questions: 27 }
+            ]},
+            { day: "Ngày 3: Thứ Năm, 26/06", tasks: [
+                { id: "d3t1", label: "Command of Evidence", questions: 35 },
+                { id: "d3t2", label: "Transitions", questions: 35 },
+                { id: "d3t3", label: "Central Ideas and Details", questions: 30 },
+                { id: "d3t4", label: "Words in Context", questions: 27 }
+            ]},
+            { day: "Ngày 4: Thứ Sáu, 27/06", tasks: [
+                { id: "d4t1", label: "Rhetorical Synthesis", questions: 35 },
+                { id: "d4t2", label: "Text Structure and Purpose", questions: 30 },
+                { id: "d4t3", label: "Boundaries", questions: 35 },
+                { id: "d4t4", label: "Inferences", questions: 27 }
+            ]},
+            { day: "Ngày 5: Thứ Bảy, 28/06", tasks: [
+                { id: "d5t1", label: "Command of Evidence", questions: 35 },
+                { id: "d5t2", label: "Form, Structure, and Sense", questions: 35 },
+                { id: "d5t3", label: "Central Ideas and Details", questions: 38 },
+                { id: "d5t4", label: "Words in Context", questions: 19 }
+            ]},
+            { day: "Ngày 6: Chủ Nhật, 29/06", tasks: [
+                { id: "d6t1", label: "Transitions", questions: 42 },
+                { id: "d6t2", label: "Text Structure and Purpose", questions: 22 },
+                { id: "d6t3", label: "Boundaries", questions: 45 },
+                { id: "d6t4", label: "Rhetorical Synthesis", questions: 18 }
+            ]},
+            { day: "Ngày 7: Thứ Hai, 30/06", tasks: [
+                { id: "d7t1", label: "Command of Evidence", questions: 36 },
+                { id: "d7t2", label: "Form, Structure, and Sense", questions: 48 },
+                { id: "d7t3", label: "Rhetorical Synthesis", questions: 28 },
+                { id: "d7t4", label: "Inferences", questions: 11 },
+                { id: "d7t5", label: "Words in Context", questions: 5 }
+            ]}
+        ];
+
+        // --- UI ELEMENTS ---
+        const taskContainer = document.getElementById('task-container');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const progressPercent = document.getElementById('progress-percent');
+        const loadingSpinner = document.getElementById('loading');
+        const userInfoDiv = document.getElementById('user-info');
+
+        // Pomodoro UI elements
+        const minutesDisplay = document.getElementById('minutes');
+        const secondsDisplay = document.getElementById('seconds');
+        const pomodoroStatus = document.getElementById('pomodoro-status');
+        const playPauseBtn = document.getElementById('play-pause-btn'); // Changed from start-btn
+        const playPauseIcon = document.getElementById('play-pause-icon'); // Icon for play/pause button
+        const resetBtn = document.getElementById('reset-btn');
+        const musicToggleBtn = document.getElementById('music-toggle-btn'); // New music button
+        
+        let db; // Firestore database instance
+        let auth; // Firebase Auth instance
+        let userId; // Current user ID
+        let progressDocRef; // Reference to the Firestore document storing progress
+        let hasEventListener = false; // Flag to ensure event listener is added only once
+
+        // --- Pomodoro Timer Variables ---
+        let timerInterval;
+        let totalSeconds;
+        let isPaused = true;
+        let currentPhase = 'work'; // 'work', 'short-break', 'long-break'
+        let workDuration = 25 * 60; // 25 minutes
+        let shortBreakDuration = 5 * 60; // 5 minutes
+        let longBreakDuration = 15 * 60; // 15 minutes
+        let pomodoroCount = 0; // To track cycles for long break
+
+        // --- Music Variables (using Tone.js for a simple synthesized drone) ---
+        let bgSynth = null; // Tone.js synth for background sound
+        let isMusicPlaying = false;
+
+        // --- FUNCTIONS ---
+
+        /**
+         * Renders the daily plan to the DOM.
+         */
+        function renderPlan() {
+            taskContainer.innerHTML = ''; // Clear existing content to prevent duplicates on re-render
+            dailyPlan.forEach(dayData => {
+                const dayCard = document.createElement('div');
+                dayCard.className = 'bg-white rounded-lg shadow-md p-4 md:p-6 border border-gray-200';
+                
+                const dayHeader = document.createElement('h3');
+                dayHeader.className = 'text-lg font-semibold text-blue-700 mb-4 border-b pb-2';
+                dayHeader.textContent = dayData.day;
+                dayCard.appendChild(dayHeader);
+
+                const taskList = document.createElement('div');
+                taskList.className = 'space-y-3';
+                
+                dayData.tasks.forEach(task => {
+                    const taskItem = document.createElement('div');
+                    // Add background hover for better UX
+                    taskItem.className = 'task-item flex items-center p-3 rounded-md transition-colors duration-200 hover:bg-blue-50';
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = task.id; // Unique ID for each task checkbox
+                    checkbox.dataset.questions = task.questions; // Store questions count as a data attribute
+                    checkbox.className = 'h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer';
+
+                    const label = document.createElement('label');
+                    label.htmlFor = task.id; // Associate label with checkbox by ID
+                    label.className = 'ml-3 block text-gray-700 cursor-pointer w-full';
+                    label.innerHTML = `${task.label}: <strong class="font-semibold">${task.questions} câu</strong>`;
+                    
+                    taskItem.appendChild(checkbox);
+                    taskItem.appendChild(label);
+                    taskList.appendChild(taskItem);
+                });
+
+                dayCard.appendChild(taskList);
+                taskContainer.appendChild(dayCard);
+            });
+            // Initially hide the task container until data is loaded
+            taskContainer.classList.add('hidden'); 
+        }
+
+        /**
+         * Updates the progress bar and text based on completed tasks.
+         */
+        function updateProgress() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            let completedQuestions = 0;
+            checkboxes.forEach(cb => {
+                if (cb.checked) {
+                    // Sum up questions from checked tasks
+                    completedQuestions += parseInt(cb.dataset.questions, 10);
+                }
+            });
+
+            // Calculate percentage, handle division by zero for safety
+            const percentage = TOTAL_QUESTIONS > 0 ? (completedQuestions / TOTAL_QUESTIONS) * 100 : 0;
+
+            // Update UI elements
+            progressBar.style.width = `${percentage}%`;
+            progressText.textContent = `Hoàn thành: ${completedQuestions}/${TOTAL_QUESTIONS} câu`;
+            progressPercent.textContent = `${Math.round(percentage)}%`;
+        }
+
+        /**
+         * Saves the current state of all checkboxes to Firestore.
+         * This function will only proceed if progressDocRef is available.
+         */
+        async function saveProgress() {
+            // Ensure we have a document reference before attempting to save
+            if (!progressDocRef) {
+                console.warn("Firestore document reference not available, cannot save progress.");
+                return;
+            }
+            
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            const progressData = {};
+            // Collect the checked state of each task
+            checkboxes.forEach(cb => {
+                progressData[cb.id] = cb.checked;
+            });
+
+            try {
+                // Set the document with the tasks object, overwriting or creating it
+                await setDoc(progressDocRef, { tasks: progressData });
+                console.log("Progress saved successfully!");
+            } catch (error) {
+                console.error("Error saving progress: ", error);
+            }
+        }
+
+        // --- Pomodoro Timer Functions ---
+
+        /**
+         * Initializes the timer display based on the current phase.
+         */
+        function initializeTimerDisplay() {
+            if (currentPhase === 'work') {
+                totalSeconds = workDuration;
+                pomodoroStatus.textContent = "Bắt đầu phiên làm việc!";
+                document.body.style.backgroundColor = '#f0f9ff'; // Light blue for work
+            } else if (currentPhase === 'short-break') {
+                totalSeconds = shortBreakDuration;
+                pomodoroStatus.textContent = "Nghỉ giải lao ngắn!";
+                document.body.style.backgroundColor = '#ecfdf5'; // Light green for break
+            } else if (currentPhase === 'long-break') {
+                totalSeconds = longBreakDuration;
+                pomodoroStatus.textContent = "Nghỉ giải lao dài!";
+                document.body.style.backgroundColor = '#fff7ed'; // Light orange for long break
+            }
+            updateTimerDisplay();
+        }
+
+        /**
+         * Updates the timer display (minutes and seconds).
+         */
+        function updateTimerDisplay() {
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            minutesDisplay.textContent = String(minutes).padStart(2, '0');
+            secondsDisplay.textContent = String(seconds).padStart(2, '0');
+        }
+
+        /**
+         * Starts or resumes the Pomodoro timer.
+         */
+        function startTimer() {
+            if (!isPaused) return; // Already running
+            isPaused = false;
+            // Change icon to pause and button color to blue (active)
+            playPauseIcon.classList.remove('fa-play');
+            playPauseIcon.classList.add('fa-pause');
+            playPauseBtn.classList.remove('bg-gray-800'); // From dark gray
+            playPauseBtn.classList.add('bg-blue-600'); // To blue
+            
+            timerInterval = setInterval(() => {
+                if (totalSeconds <= 0) {
+                    clearInterval(timerInterval);
+                    handleTimerEnd();
+                } else {
+                    totalSeconds--;
+                    updateTimerDisplay();
+                }
+            }, 1000); // Update every second
+        }
+
+        /**
+         * Pauses the Pomodoro timer.
+         */
+        function pauseTimer() {
+            clearInterval(timerInterval);
+            isPaused = true;
+            // Change icon to play and button color to dark gray (paused)
+            playPauseIcon.classList.remove('fa-pause');
+            playPauseIcon.classList.add('fa-play');
+            playPauseBtn.classList.remove('bg-blue-600'); // From blue
+            playPauseBtn.classList.add('bg-gray-800'); // To dark gray
+            pomodoroStatus.textContent = `Tạm dừng: ${currentPhase === 'work' ? 'Làm việc' : 'Nghỉ giải lao'}`;
+        }
+
+        /**
+         * Toggles the play/pause state of the Pomodoro timer.
+         */
+        function togglePlayPauseTimer() {
+            if (isPaused) {
+                startTimer();
+            } else {
+                pauseTimer();
+            }
+        }
+
+        /**
+         * Resets the Pomodoro timer to the initial work phase.
+         */
+        function resetTimer() {
+            clearInterval(timerInterval);
+            isPaused = true;
+            pomodoroCount = 0; // Reset pomodoro cycles
+            currentPhase = 'work';
+            initializeTimerDisplay();
+            document.body.style.backgroundColor = '#f3f4f6'; // Reset background color
+            pomodoroStatus.textContent = "Bắt đầu phiên làm việc!";
+            // Ensure play icon is shown and button color is dark gray on reset
+            playPauseIcon.classList.remove('fa-pause');
+            playPauseIcon.classList.add('fa-play');
+            playPauseBtn.classList.remove('bg-blue-600');
+            playPauseBtn.classList.add('bg-gray-800');
+        }
+
+        /**
+         * Handles the end of a Pomodoro timer phase.
+         * Switches to the next phase (break or work).
+         */
+        function handleTimerEnd() {
+            if (currentPhase === 'work') {
+                pomodoroCount++;
+                if (pomodoroCount % 4 === 0) {
+                    currentPhase = 'long-break';
+                } else {
+                    currentPhase = 'short-break';
+                }
+            } else { // It was a break
+                currentPhase = 'work';
+            }
+            initializeTimerDisplay();
+            // Automatically start the next phase after a short delay for user to notice
+            setTimeout(startTimer, 1000); 
+        }
+
+        // --- Confetti Effect Function ---
+        function triggerConfetti() {
+            // Basic confetti effect
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
+        }
+
+        // --- Background Music Functions (using Tone.js) ---
+        async function toggleBackgroundMusic() {
+            // Start Tone.js audio context on first user interaction
+            await Tone.start(); 
+
+            if (!bgSynth) {
+                // Initialize the synth if it hasn't been created yet
+                bgSynth = new Tone.AMSynth().toDestination();
+                bgSynth.volume.value = -20; // Very low volume for background music
+                bgSynth.set({
+                    oscillator: { type: "sine" },
+                    envelope: {
+                        attack: 2, // Smooth attack for a gentle start
+                        decay: 1,
+                        sustain: 1,
+                        release: 3 // Smooth release for fading out
+                    }
+                });
+            }
+
+            if (isMusicPlaying) {
+                bgSynth.triggerRelease(); // Stop the sound gracefully
+                isMusicPlaying = false;
+                musicToggleBtn.innerHTML = '<i class="fas fa-volume-mute mr-2"></i> Nhạc nền'; // Mute icon
+                musicToggleBtn.classList.remove('bg-blue-600');
+                musicToggleBtn.classList.add('bg-gray-400');
+            } else {
+                // Play a sustained C3 note as a gentle drone
+                bgSynth.triggerAttack("C3"); 
+                isMusicPlaying = true;
+                musicToggleBtn.innerHTML = '<i class="fas fa-volume-up mr-2"></i> Nhạc nền'; // Unmute icon
+                musicToggleBtn.classList.remove('bg-gray-400');
+                musicToggleBtn.classList.add('bg-blue-600');
+            }
+        }
+
+
+        /**
+         * Main function to initialize the application and Firebase.
+         */
+        async function main() {
+            renderPlan(); // Render the UI structure first
+            initializeTimerDisplay(); // Initialize Pomodoro timer display
+
+            try {
+                // Khởi tạo ứng dụng Firebase với cấu hình đã cung cấp
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                // setLogLevel('debug'); // Uncomment for detailed Firebase logging
+
+                // Lắng nghe sự thay đổi trạng thái xác thực
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        // Người dùng đã đăng nhập, lấy UID của họ
+                        userId = user.uid;
+                        userInfoDiv.textContent = `User ID: ${userId}`;
+
+                        // Định nghĩa đường dẫn tài liệu Firestore để lưu dữ liệu riêng tư của người dùng
+                        progressDocRef = doc(db, `artifacts/${appId}/users/${userId}/satProgress/data`);
+                        
+                        // Thiết lập trình lắng nghe thời gian thực cho dữ liệu tiến độ từ Firestore
+                        onSnapshot(progressDocRef, (docSnap) => {
+                            if (docSnap.exists()) {
+                                // Nếu dữ liệu tồn tại, áp dụng nó vào các ô kiểm
+                                const progressData = docSnap.data().tasks;
+                                Object.keys(progressData).forEach(taskId => {
+                                    const checkbox = document.getElementById(taskId);
+                                    if (checkbox) {
+                                        checkbox.checked = progressData[taskId];
+                                    }
+                                });
+                            }
+                            // Luôn cập nhật hiển thị tiến độ sau khi tải dữ liệu (hoặc nếu không có dữ liệu)
+                            updateProgress();
+                            
+                            // Ẩn vòng quay tải và hiển thị nội dung sau khi dữ liệu được tải hoặc xác nhận không có
+                            loadingSpinner.classList.add('hidden');
+                            taskContainer.classList.remove('hidden');
+
+                            // Thêm trình lắng nghe sự kiện CHỈ MỘT LẦN khi xác thực và tải dữ liệu đã sẵn sàng
+                            if (!hasEventListener) {
+                                taskContainer.addEventListener('change', (e) => {
+                                    if (e.target.type === 'checkbox') {
+                                        updateProgress(); // Update UI immediately
+                                        saveProgress(); // Save to Firestore
+                                        if (e.target.checked) {
+                                            triggerConfetti(); // Trigger confetti when task is checked
+                                        }
+                                    }
+                                });
+                                hasEventListener = true; // Set flag to true
+                            }
+                        }, (error) => {
+                             // Xử lý lỗi trong quá trình lắng nghe snapshot
+                             console.error("Error getting document:", error);
+                             loadingSpinner.classList.add('hidden');
+                             taskContainer.classList.remove('hidden');
+                             userInfoDiv.textContent = 'Lỗi tải dữ liệu. Vui lòng thử lại.';
+                        });
+
+                    } else {
+                        // Người dùng đã đăng xuất (ví dụ: đăng nhập ẩn danh không thành công hoặc người dùng đăng xuất)
+                        console.log("User is signed out.");
+                        loadingSpinner.classList.add('hidden');
+                        taskContainer.classList.remove('hidden');
+                        userInfoDiv.textContent = 'Bạn đang xem với tư cách khách. Tiến độ sẽ không được lưu.';
+                    }
+                });
+
+                // Cố gắng đăng nhập người dùng, trước tiên bằng custom token (không có khi cục bộ), sau đó ẩn danh
+                // Đây là lý do tại sao userId sẽ xuất hiện dưới dạng "khách" nếu không có token được cung cấp bởi môi trường Canvas.
+                await signInAnonymously(auth); // Sign in anonymously to get a temporary userId
+
+            } catch(e) {
+                // Bắt bất kỳ lỗi nào trong quá trình khởi tạo hoặc đăng nhập Firebase
+                console.error("Firebase initialization failed:", e);
+                loadingSpinner.innerHTML = '<p class="text-red-500">Lỗi kết nối Firebase. Vui lòng làm mới lại trang.</p>';
+            }
+
+            // --- Add Pomodoro and Music Event Listeners ---
+            playPauseBtn.addEventListener('click', togglePlayPauseTimer); // Single button for play/pause
+            resetBtn.addEventListener('click', resetTimer);
+            musicToggleBtn.addEventListener('click', toggleBackgroundMusic); // Music toggle button
+        }
+
+        // Run the main application function when the script loads
+        main();
+
+    </script>
+</body>
+</html>
